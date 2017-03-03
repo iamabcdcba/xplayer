@@ -40,6 +40,7 @@ class Player
 
   bool stopped;
   bool paused;
+  bool eof;
 
   SDL_Thread      *init_tid;
   SDL_Thread      *decode_tid;

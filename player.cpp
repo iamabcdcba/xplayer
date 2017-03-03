@@ -8,6 +8,7 @@ Player::Player(const char* ppath, Listener* plistener)
   video_tid = decode_tid = init_tid = NULL;
   paused = false;
   stopped = true;
+  eof = false;
   mutex = SDL_CreateMutex();
   pCurFrame = av_frame_alloc();
   pFrame = av_frame_alloc();
@@ -39,6 +40,7 @@ void Player::play()
   }
   if (stopped) {
     picture->play();
+    eof = false;
     stopped = false;
     init_tid = SDL_CreateThread(init_thread, this);
     video_tid = SDL_CreateThread(video_thread, this);    
@@ -60,7 +62,6 @@ void Player::stop()
     stopped = true;
     queue->stop();
     picture->stop();
-
     int ret;
     if (init_tid)
       SDL_WaitThread(init_tid, &ret);
@@ -69,10 +70,8 @@ void Player::stop()
     if (decode_tid)
       SDL_WaitThread(decode_tid, &ret);
     video_tid = decode_tid = init_tid = NULL;
-
     queue->release();
     picture->release();
-    listener->finished();
   }
 }
 
@@ -131,7 +130,6 @@ void Player::init()
   picture->set_video_context(codecCtx);
   decode_tid = SDL_CreateThread(decode_thread, this);
   listener->initialized();
-
 }
 
 int Player::decode_thread(void* object)
@@ -143,8 +141,10 @@ int Player::decode_thread(void* object)
 
 void Player::decode()
 {
+  int err_code;
   char err_msg[512];
   AVPacket packet;
+
   while (1) {
     if (stopped)
       break;    
@@ -153,22 +153,26 @@ void Player::decode()
       continue;
     }
     if (av_read_frame(format_ctx, &packet) < 0) {
-      if(format_ctx->pb->error == 0) {	
+      eof = true;
+      break;
+      if (format_ctx->pb->error == 0) {	
 	SDL_Delay(100);
 	continue;
       } else
-	break;
-    }
+	break;      
+    } 
     if (packet.stream_index == video_index) 
       queue->push(&packet);
     else
       av_free_packet(&packet);
   }
-  if (!stopped) {
-    stop();
+  while (!stopped) {
+    SDL_Delay(100);    
   }
+  queue->release();  
   avcodec_close(video_ctx);
   avformat_close_input(&format_ctx);
+  listener->finished();  
 }
 
 int Player::video_thread(void* object)
@@ -185,8 +189,12 @@ void Player::render()
   while (1) {
     if (stopped)
       break;
-    if (queue->pop(packet) < 0)
-      break;
+    if (queue->pop(packet, eof) < 0) {
+      if (eof) {
+	picture->stop();
+	break;
+      }
+    }
     SDL_LockMutex(mutex);
     avcodec_decode_video2(video_ctx, pFrame, &frameFinished, packet);
     listener->frameAvailable(pFrame);
@@ -195,4 +203,6 @@ void Player::render()
       break;
     av_free_packet(packet);
   }
+  picture->release();
+  stopped = true;  
 }

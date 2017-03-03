@@ -64,15 +64,18 @@ int PacketQueue::push(AVPacket *pkt)
   return 0;
 }
 
-int PacketQueue::pop(AVPacket* pkt)
+int PacketQueue::pop(AVPacket* pkt, bool eof)
 {
   AVPacketList* pktl;
   int ret = -1;
   SDL_LockMutex(mutex);
   while (!stopped) {
-    if (!first || paused)
-      SDL_CondWait(cond, mutex);
-    else {
+    if (!first || paused) {
+      if (eof && (!paused))
+	break;
+      else
+	SDL_CondWait(cond, mutex);
+    } else {
       pktl = first;
       first = first->next;
       if (!first) 

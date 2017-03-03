@@ -24,7 +24,7 @@ class PacketQueue {
   void stop();
   void clear();
   int push(AVPacket *pkt);
-  int pop(AVPacket *pkt);
+  int pop(AVPacket *pkt, bool eof);
   void release();
   bool is_full();
 };

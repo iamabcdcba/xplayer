@@ -148,9 +148,11 @@ void VideoPicture::show()
 void VideoPicture::update()
 {
   if (number == 0) {
+    SDL_LockMutex(mutex);
     if (!stopped) {
       schedule_refresh(this, 1);
     }
+    SDL_UnlockMutex(mutex);
   }
   else {
     schedule_refresh(this, 80);
